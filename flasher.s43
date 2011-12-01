@@ -1,0 +1,320 @@
+;*******************************************************************************
+;   MSP430G2231 flasher using Timer_A, up mode, internal LFO
+;
+;   adapted from TI
+;
+;   MSP430G2xx2 Demo - Timer_A, PWM TA1, Up Mode, 32kHz ACLK
+;
+;   Description: This program generates one PWM outputs on P1.6 using
+;   Timer_A configured for up mode. The value in CCR0, 512-1, defines the PWM
+;   period and the value in CCR1 the PWM duty cycle. Using the internal 12kHz
+;   ACLK as TACLK
+;   Normal operating mode is LPM3.
+;   ACLK = LVCLK = 12kHz, MCLK = default DCO ~1.1MHz.
+;
+;                MSP430G2231
+;             -----------------
+;         /|\|                 |-
+;          | |                 |
+;          --|RST              |-
+;            |                 |
+;            |       P1.1/TA0.1|--> CCR1 - PWM
+;
+;   CT Malan
+;
+;   December 2010
+;   Built with IAR Embedded Workbench Version: 5.10
+;*******************************************************************************
+
+#include "msp430g2231.h"                    ; #define controlled include file
+
+       NAME    main                        ; module name
+
+       PUBLIC  main                        ; make the main label vissible
+
+
+           ASEG
+infoD:      ORG     01000H                  ; info Segment D
+infoC:      ORG     01040H                  ; info Segment C
+infoB:      ORG     01080H                  ; info Segment B
+infoA:      ORG     010C0H                  ; info Segment A
+
+
+           RSEG    CSTACK                  ; pre-declaration of segment
+
+           ASEG                            ; RAM
+adcdata:    ORG     00200H
+temp:       ORG     00201H
+data1:      ORG     00202H                  ;
+data2:      ORG     00203H                  ;
+mode:       ORG     00204H
+
+tos:        ORG     00280H                  ; top of stack
+
+
+;-------------------------------------------------------------------------------
+           RSEG    CODE                    ; main program memory
+;-------------------------------------------------------------------------------
+error:
+           MOV.B   #00000101B,&P1OUT       ; P1.0 P1.2 high
+           BIS.W   #LPM4,SR                ; remain in LPM3
+           NOP                             ; required only for debugger
+
+ldelay:     PUSH    R15
+ldloop:     INC.W   R15
+           JNZ     ldloop
+ldloop2:    INC.W   R15
+           JNZ     ldloop2
+ldloop3:    INC.W   R15
+           JNZ     ldloop3
+           POP     R15
+           RET
+
+delay:      PUSH    R15
+dloop:      INC.W   R15
+           JNZ     dloop
+dloop2:     INC.W   R15
+           JNZ     dloop2
+           POP     R15
+           RET
+
+sdelay:     PUSH    R15
+sdloop:      INC.W   R15
+           JNZ     sdloop
+           POP     R15
+           RET
+
+
+lflash:     BIS.B   #BIT0,&P1OUT
+           CALL    #delay
+           BIC.B   #BIT0,&P1OUT
+           CALL    #ldelay
+           RET
+sflash:     BIS.B   #BIT0,&P1OUT
+           CALL    #sdelay
+           BIC.B   #BIT0,&P1OUT
+           CALL    #sdelay
+           RET
+
+
+reset:
+
+StopWDT     MOV.W   #WDTPW+WDTHOLD+WDTNMIES,&WDTCTL  ; stop watchdog timer
+           MOV.W   #WDTPW+WDTHOLD+WDTNMIES+WDTNMI,&WDTCTL  ;nmi
+InitSP      MOV     #tos, SP                ; set up stack
+
+SetupP1     MOV.B   #BIT2,&P1OUT            ; trigger off
+           MOV.B   #~BIT3,&P1DIR           ; all out except P1.3
+           MOV.B   #01000100B,&P1SEL       ; P1.2 P1.6 TA0.1 option
+
+SetupP2     MOV.B   #0,&P2OUT               ; off
+           MOV.B   #~0,&P2DIR              ; all out
+           MOV.B   #0,&P2SEL                ; P1.2 P1.6 TA0.1 option
+
+
+SetupVLO    BIS.B   #LFXT1S1,&BCSCTL3       ; LFXTS = 10
+Divider     BIS.B   #DIVA1,&BCSCTL1         ; DIVA = 10 (/4)
+
+SetupTA     MOV.W   #TASSEL_1+MC_1,&TACTL   ; ACLK, upmode
+SetupTAC1   MOV.W   #OUTMOD_3,&CCTL1        ; CCR1 reset/set
+
+           MOV.W   #02000H,&CCR0           ; PWM Period
+           MOV.W   #01000H,&CCR1           ; PWM Duty Cycle
+
+SetADC10
+           MOV.W   #SREF_1,&ADC10CTL0      ; Vref, Vss
+           BIS.W   #ADC10SHT_1,&ADC10CTL0  ; s+h 8
+           BIS.W   #ADC10SR,&ADC10CTL0     ; low speed
+           BIS.W   #REFBURST,&ADC10CTL0    ; burst
+           BIS.W   #MSC,&ADC10CTL0         ; automatic
+           BIS.W   #REFON,&ADC10CTL0       ; reference on
+           BIS.W   #ADC10ON,&ADC10CTL0     ; ADC10 on
+           BIS.W   #ADC10IE,&ADC10CTL0     ; interupt enable
+           MOV.W   #INCH_10,&ADC10CTL1     ; channel 10 (temp)
+           BIS.W   #SHS_1,&ADC10CTL1       ; TA2_1
+           BIS.W   #ADC10DF,&ADC10CTL1     ; twos complement
+           BIS.W   #ISSH,&ADC10CTL1        ; invert
+           BIS.W   #ADC10DIV_7,&ADC10CTL1  ; /8
+           BIS.W   #ADC10SSEL_0,&ADC10CTL1 ; ADC10OSC
+           BIS.W   #CONSEQ_2,&ADC10CTL1    ; repeat single channel
+           MOV.B   #ADC10CT,&ADC10DTC0     ; continous
+           MOV.B   #001h,&ADC10DTC1        ; 1 conversion per block
+
+SetupS1     BIS.B   #NMIIE,&IE1             ; enable interrupt on S1
+SetupS2     BIS.B   #BIT3,&P1IES            ; enable interrupt on 1->0
+           BIS.B   #BIT3,&P1IE             ; enable interrupt on S2
+
+
+           MOV.B   #0,mode                 ; run mode
+           BIS.W   #GIE,SR                 ; enable interrupts
+           BIS.W   #ENC,&ADC10CTL0         ; start ADC10
+           MOV.W   #adcdata,&ADC10SA       ; start addrADC10
+
+
+
+main:
+           NOP
+           JMP     main
+           BIS.W   #LPM3,SR                ; remain in LPM3
+           NOP                             ; required only for debugger
+
+isradc:
+           CMP.B   #040H,temp
+           JHS     error
+           RETI
+
+;---------------------------------------------------------------
+; S1 is used to enter a program mode to set the period and duty
+;
+; change mode
+; stop all peripherals
+; flash LEDs
+; set up mode 1
+;
+
+isrs1:
+           CMP.B   #0,mode
+           JNE     sws1
+isrs2:
+           CMP.B   #0,mode
+           JNE     sws2
+
+           BIC.W   #ENC,&ADC10CTL0         ; stop ADC
+           ;invert duty cycle!
+           ;still need clear flash and set up ADC for power down
+detect and flash save.
+           ;(maybe do save on dual button press?)
+
+sws1:
+           PUSH R15
+           INC.B   mode
+           CMP.B   #5,mode
+           JNE     cont1
+           MOV.B   #1,mode
+cont1:
+           MOV.B mode,R15
+
+rept1:
+           CALL    #lflash
+           DEC.B   R15
+           JNZ     rept1
+
+
+           BIC.B   #BIT3,&P1IFG
+           BIC.B   #NMIIFG,&IFG1
+           BIS.B   #NMIIE,&IE1
+           POP     R15
+           RETI
+
+sws2:
+           CALL    #sflash
+           CMP.B   #1,mode
+           JNE     next1
+
+           SUB.W   #0100H,&CCR0            ; PWM Period
+           CMP.W   #0100H,&CCR0            ; PWM Period
+           JNE     n11
+           MOV.W   #0200H,&CCR0            ; PWM Period
+n11:
+           CMP.W   &CCR0,&CCR1
+           JNE      end2
+           SUB.W   #0100H,&CCR1            ; Duty
+
+next1:
+           CMP.B   #2,mode
+           JNE     next2
+
+           ADDC.W  #00100H,&CCR0            ; PWM Period
+           CMP.W   #07100H,&CCR0            ; PWM Period
+           JNE     n21
+           MOV.W   #07000H,&CCR0            ; PWM Period
+
+n21:
+
+next2:
+           CMP.B   #3,mode
+           JNE     next3
+
+           SUB.W   #00100H,&CCR1            ; PWM duty
+           CMP.W   #00100H,&CCR1            ; PWM duty
+           JNE     n31
+           MOV.W   #00200H,&CCR1            ; PWM duty
+n31:
+
+next3:
+
+           CMP.B   #4,mode
+           JNE     next4
+
+           ADDC.W  #0100H,&CCR1            ; PWM duty
+           CMP.W   #7000H,&CCR1            ; PWM duty
+           JNE     n41
+           MOV.W   #6F00H,&CCR1            ; PWM duty
+n41:
+           CMP.W   &CCR0,&CCR1
+           JNE      end2
+           ADDC.W   #0100H,&CCR0            ; PWM period
+
+
+
+next4:
+end2:
+           BIC.B   #NMIIFG,&IFG1
+           BIS.B   #NMIIE,&IE1
+           BIC.B   #BIT3,&P1IFG
+           RETI
+
+;            CALL    led1on
+ ;           CALL    led2on
+ ;          CALL    delay
+  ;         CALL    led1off
+   ;        CALL    led2off
+
+    ;       MOV.B   #01,mode
+     ;      etc
+
+
+
+
+
+       JMP $
+;-------------------------------------------------------------------------------
+;      Interrupt Vectors
+;-------------------------------------------------------------------------------
+
+       ASEG
+       ORG     0FFE0H                  ;
+       DW      error
+       ORG     0FFE2H                  ;
+       DW      error
+       ORG     0FFE4H                  ; PORT1_VECTOR
+       DW      isrs2 ;button
+       ORG     0FFE6H                  ; PORT2_VECTOR
+       DW      error
+       ORG     0FFE8H                  ; USI_VECTOR
+       DW      error
+       ORG     0FFEAH                  ; ADC10_VECTOR
+       DW      isradc
+       ORG     0FFECH                  ;
+       DW      error
+       ORG     0FFEEH                  ;
+       DW      error
+       ORG     0FFF0H                  ; TIMERA1_VECTOR
+       DW      error
+       ORG     0FFF2H                  ; TIMERA0_VECTOR
+       DW      error
+       ORG     0FFF4H                  ; WDT_VECTOR
+       DW      error
+       ORG     0FFF6H                  ;
+       DW      error
+       ORG     0FFF8H                  ;
+       DW      error
+       ORG     0FFFAH                  ;
+       DW      error
+       ORG     0FFFCH                  ; NMI_VECTOR
+       DW      isrs1
+       ORG     0FFFEH                  ; RESET_VECTOR[Highest Priority]
+       DW      reset
+;
+
+       END
