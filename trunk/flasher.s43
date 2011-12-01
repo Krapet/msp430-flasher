@@ -1,5 +1,5 @@
 ;*******************************************************************************
-;   MSP430G2231 flasher using Timer_A, up mode, internal LFO
+;   MSP430G2231 flasher using Timer_A, up mode, internal low frequency clock
 ;
 ;   adapted from TI
 ;
@@ -181,8 +181,8 @@ isrs2:
 
            BIC.W   #ENC,&ADC10CTL0         ; stop ADC
            ;invert duty cycle!
-           ;still need clear flash and set up ADC for power down
-detect and flash save.
+           ;still need clear flash and set up ADC for power down detect
+           ;and flash save.
            ;(maybe do save on dual button press?)
 
 sws1:
