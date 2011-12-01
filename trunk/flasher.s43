@@ -23,14 +23,14 @@
 ;   CT Malan
 ;
 ;   December 2010
-;   Built with IAR Embedded Workbench Version: 5.10
+;   Built with IAR Embedded Workbench Version: 5
 ;*******************************************************************************
 
 #include "msp430g2231.h"                    ; #define controlled include file
 
-       NAME    main                        ; module name
+       NAME    main                         ; module name
 
-       PUBLIC  main                        ; make the main label vissible
+       PUBLIC  main                         ; make the main label vissible
 
 
            ASEG
