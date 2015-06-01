@@ -1,0 +1,1 @@
+First project on the MSP430 Launchpad to learn the peripherals.
